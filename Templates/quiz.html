@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ section_title }}｜第{{ number }}問{% endblock %}
+{% block content %}
+  <span class="badge">{{ section_title }} ｜ 第 {{ number }} 問 / 全 {{ total }} 問</span>
+  <h1>{{ question }}</h1>
+  <form action="{{ url_for('answer', section_id=section_id) }}" method="post">
+    <div class="choice-list">
+      {% for num, text in choices %}
+        <button type="submit" name="choice" value="{{ num }}" class="btn choice-btn">
+          <span class="choice-label">{{ loop.index }}</span>{{ text }}
+        </button>
+      {% endfor %}
+    </div>
+  </form>
+  <a class="btn secondary" href="{{ url_for('index') }}">単元選択に戻る</a>
+{% endblock %}

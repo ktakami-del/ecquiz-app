@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ section_title }}｜結果{% endblock %}
+{% block content %}
+  {% if percent == 100 %}
+    <div class="result-icon">🏆</div>
+    <h1 class="correct">全問正解！</h1>
+  {% elif percent >= 60 %}
+    <div class="result-icon">🎉</div>
+    <h1>よくできました！</h1>
+  {% else %}
+    <div class="result-icon">📚</div>
+    <h1>もう一歩！</h1>
+  {% endif %}
+
+  <p class="badge">{{ section_title }}</p>
+  <div class="score">
+    <span class="score-num">{{ score }}</span> / {{ total }} 問正解
+    <div class="score-percent">正答率 {{ percent }}%</div>
+  </div>
+
+  <a class="btn" href="{{ url_for('start', section_id=section_id) }}">もう一度挑戦（シャッフル）</a>
+  <a class="btn secondary" href="{{ url_for('index') }}">単元選択に戻る</a>
+{% endblock %}

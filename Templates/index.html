@@ -1,0 +1,14 @@
+{% extends "base.html" %} {% block title %}クイズアプリ｜単元を選ぶ{% endblock
+%} {% block content %}
+<div class="result-icon">🧠</div>
+<h1>経済思想史　期末対策</h1>
+<p class="note">挑戦したい単元を選んでね。</p>
+<div class="section-list">
+    {% for s in sections %}
+    <a class="btn section-btn" href="{{ url_for('start', section_id=s.id) }}">
+        {{ s.title }}
+        <span class="count">{{ s.count }}問</span>
+    </a>
+    {% endfor %}
+</div>
+{% endblock %}

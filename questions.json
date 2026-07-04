@@ -1,0 +1,44 @@
+[
+  {
+    "id": "general",
+    "title": "一般常識",
+    "questions": [
+      {
+        "question": "日本の首都はどこ？",
+        "answers": ["東京", "とうきょう", "tokyo"]
+      },
+      {
+        "question": "1年は何日？（うるう年でない年、数字のみ）",
+        "answers": ["365"]
+      }
+    ]
+  },
+  {
+    "id": "math",
+    "title": "計算",
+    "questions": [
+      {
+        "question": "1 + 1 は？（数字で答えてね）",
+        "answers": ["2"]
+      },
+      {
+        "question": "7 × 8 は？（数字のみ）",
+        "answers": ["56"]
+      }
+    ]
+  },
+  {
+    "id": "geography",
+    "title": "地理",
+    "questions": [
+      {
+        "question": "富士山の標高は何メートル？（数字のみ）",
+        "answers": ["3776"]
+      },
+      {
+        "question": "世界で一番広い海はどこ？",
+        "answers": ["太平洋", "たいへいよう", "pacific"]
+      }
+    ]
+  }
+]

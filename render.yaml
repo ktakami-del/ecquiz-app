@@ -1,0 +1,17 @@
+# Render Blueprint（この設定でWebサービスを自動構築できる）
+# Render ダッシュボードで「New +」→「Blueprint」→ このリポジトリを選ぶと反映される。
+services:
+  - type: web
+    name: ecquiz-app
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # $PORT は Render が割り当てるポート。0.0.0.0 で待ち受ける必要がある。
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2
+    envVars:
+      # セッション署名用の鍵を Render が安全に自動生成する（自分で用意しなくてよい）
+      - key: SECRET_KEY
+        generateValue: true
+      # 使用する Python のバージョンを固定
+      - key: PYTHON_VERSION
+        value: "3.13.3"

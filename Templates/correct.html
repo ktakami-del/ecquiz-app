@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}正解！{% endblock %}
+{% block content %}
+  <div class="result-icon correct">⭕</div>
+  <h1 class="correct">正解！</h1>
+  <p class="note">あなたの解答： <span class="answer-text">{{ user_answer }}</span></p>
+  {% if explanation %}
+    <div class="explanation">
+      <div class="explanation-title">解説</div>
+      {{ explanation }}
+    </div>
+  {% endif %}
+  {% if has_next %}
+    <a class="btn" href="{{ url_for('quiz', section_id=section_id) }}">次の問題へ</a>
+  {% else %}
+    <a class="btn" href="{{ url_for('result', section_id=section_id) }}">結果を見る</a>
+  {% endif %}
+  <a class="btn secondary" href="{{ url_for('index') }}">単元選択に戻る</a>
+{% endblock %}
