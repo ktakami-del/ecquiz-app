@@ -15,9 +15,12 @@
   <p class="badge">{{ section_title }}</p>
   <div class="score">
     <span class="score-num">{{ score }}</span> / {{ total }} 問正解
-    <div class="score-percent">正答率 {{ percent }}%</div>
+    <div class="score-percent">正答率 {{ percent }}%（自己採点）</div>
   </div>
 
-  <a class="btn" href="{{ url_for('start', section_id=section_id) }}">もう一度挑戦（シャッフル）</a>
+  <a class="btn" href="{{ url_for('start', section_id=section_id, count=total) }}">
+    同じ {{ total }} 問数でもう一度（シャッフル）
+  </a>
+  <a class="btn secondary" href="{{ url_for('setup', section_id=section_id) }}">出題数を変える</a>
   <a class="btn secondary" href="{{ url_for('index') }}">単元選択に戻る</a>
 {% endblock %}

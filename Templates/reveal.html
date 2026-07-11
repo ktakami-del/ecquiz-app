@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ section_title }}｜第{{ number }}問の答え{% endblock %}
+{% block content %}
+  <span class="badge">{{ section_title }} ｜ 第 {{ number }} 問 / 全 {{ total }} 問</span>
+
+  <p class="note">
+    あなたの解答：
+    {% if user_answer %}
+      <span class="answer-text">{{ user_answer }}</span>
+    {% else %}
+      <span class="answer-text">（未記入）</span>
+    {% endif %}
+  </p>
+
+  <div class="answer-box">
+    <div class="answer-box-title">答え</div>
+    <div class="answer-box-text">{{ correct_answer }}</div>
+  </div>
+
+  {% if explanation %}
+    <div class="explanation">
+      <div class="explanation-title">解説</div>
+      {{ explanation }}
+    </div>
+  {% endif %}
+
+  <p class="note">自分の解答は合っていましたか？</p>
+  <form action="{{ url_for('grade', section_id=section_id) }}" method="post">
+    <div class="judge-list">
+      <button type="submit" name="judge" value="correct" class="btn judge-btn judge-correct">
+        ⭕ 正解
+      </button>
+      <button type="submit" name="judge" value="incorrect" class="btn judge-btn judge-incorrect">
+        ❌ 不正解
+      </button>
+    </div>
+  </form>
+  <a class="btn secondary" href="{{ url_for('index') }}">単元選択に戻る</a>
+{% endblock %}

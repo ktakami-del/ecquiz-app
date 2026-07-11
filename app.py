@@ -18,19 +18,20 @@ if not app.debug and app.secret_key == "dev-secret-key-change-in-production":
     )
 
 # ---- クイズデータ ----------------------------------------------------------
-# 問題と解答は questions.xlsx（Excel）で管理する（4択式）。
+# 問題と解答は questions.xlsx（Excel）で管理する（一問一答式）。
 #
 # 1行 = 1問。列（1行目はヘッダー、2行目以降がデータ）：
 #   section_id     : URL に使う英数字のID（同じ単元の行には同じIDを書く）
 #   section_title  : トップ画面に表示する単元名
 #   question       : 問題文
-#   choice1〜4      : 選択肢（最低2つ。空欄の選択肢は無視される）
-#   answer         : 正解の選択肢番号（1〜4）
-#   explanation    : 解説（任意。結果画面に表示。空欄可）
-# 単元の表示順・問題の出題順は、行の並び順のとおり。
-CHOICE_COLUMNS = ["choice1", "choice2", "choice3", "choice4"]
+#   answer         : 模範解答（語句など）。表示するだけで自動採点はしない
+#   explanation    : 解説（任意。解答表示画面に出る。空欄可）
+# 単元の表示順は、行の並び順のとおり。問題の出題順はシャッフルされる。
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 QUESTIONS_FILE = os.path.join(BASE_DIR, "questions.xlsx")
+
+# 出題数の選択肢。単元の問題数を超えるものは表示せず、末尾に「全問」を足す。
+COUNT_CHOICES = [10, 30, 50, 100]
 
 
 def load_sections():
@@ -49,8 +50,7 @@ def load_sections():
     for i, name in enumerate(header):
         if name is not None:
             index[str(name).strip()] = i
-    required = ["section_id", "section_title", "question",
-                "choice1", "choice2", "answer"]
+    required = ["section_id", "section_title", "question", "answer"]
     missing = [c for c in required if c not in index]
     if missing:
         raise ValueError(
@@ -64,7 +64,7 @@ def load_sections():
 
     sections = []
     by_id = {}
-    for line_no, row in enumerate(rows, start=2):  # 2行目からがデータ
+    for row in rows:  # 2行目からがデータ
         # 完全に空の行はスキップ
         if row is None or all(v is None or str(v).strip() == "" for v in row):
             continue
@@ -72,35 +72,16 @@ def load_sections():
         sec_id = str(cell(row, "section_id") or "").strip()
         sec_title = str(cell(row, "section_title") or "").strip()
         question = cell(row, "question")
-        answer_raw = cell(row, "answer")
+        answer = cell(row, "answer")
 
-        if not sec_id or question is None or answer_raw is None:
-            continue  # 必須項目が欠けた行はスキップ
+        # 必須項目（単元ID・問題文・模範解答）が欠けた行はスキップ
+        if not sec_id or question is None or answer is None:
+            continue
+        question = str(question).strip()
+        answer = str(answer).strip()
+        if not question or not answer:
+            continue
 
-        # 選択肢（空欄は除外）。番号と対応づけるため (番号, テキスト) で持つ
-        numbered_choices = []
-        for n, col in enumerate(CHOICE_COLUMNS, start=1):
-            val = cell(row, col)
-            if val is not None and str(val).strip() != "":
-                numbered_choices.append((n, str(val).strip()))
-        if len(numbered_choices) < 2:
-            raise ValueError(f"{line_no}行目: 選択肢が2つ未満です。")
-
-        # 正解番号（1〜4）→ choices の何番目か
-        try:
-            answer_no = int(float(str(answer_raw).strip()))
-        except ValueError:
-            raise ValueError(
-                f"{line_no}行目: answer は選択肢番号(1〜4)で指定してください。"
-            )
-        valid_numbers = [n for n, _ in numbered_choices]
-        if answer_no not in valid_numbers:
-            raise ValueError(
-                f"{line_no}行目: answer={answer_no} に対応する選択肢がありません。"
-            )
-
-        choices = [text for _, text in numbered_choices]
-        answer_index = valid_numbers.index(answer_no)  # 0始まりの位置
         explanation = cell(row, "explanation")
         explanation = str(explanation).strip() if explanation is not None else ""
 
@@ -109,9 +90,8 @@ def load_sections():
             by_id[sec_id] = section
             sections.append(section)
         by_id[sec_id]["questions"].append({
-            "question": str(question).strip(),
-            "choices": choices,
-            "answer_index": answer_index,
+            "question": question,
+            "answer": answer,
             "explanation": explanation,
         })
 
@@ -172,6 +152,18 @@ def current_quiz(section_id):
     return quiz
 
 
+def current_question(section, quiz_state):
+    """いま出題中の問題を返す（全問終了・Excel 変更時は None）"""
+    questions = section["questions"]
+    pos = quiz_state["pos"]
+    if pos >= len(quiz_state["order"]):
+        return None
+    qidx = quiz_state["order"][pos]
+    if qidx >= len(questions):  # Excel が編集されて問題数が減った場合の保険
+        return None
+    return questions[qidx]
+
+
 @app.route("/")
 def index():
     """トップ画面：セクション（単元）を選ぶ"""
@@ -182,17 +174,44 @@ def index():
     return render_template("index.html", sections=sections)
 
 
+@app.route("/setup/<section_id>")
+def setup(section_id):
+    """出題数を選ぶ画面（10問・30問・…・全問）"""
+    section = get_section(section_id)
+    total = len(section["questions"])
+    # 用意した選択肢のうち、その単元の問題数を超えないものだけ出す。
+    # 最後は必ず「全問」（総数が選択肢と重なる場合は重複させない）。
+    counts = [c for c in COUNT_CHOICES if c < total] + [total]
+    return render_template(
+        "setup.html",
+        section_id=section_id,
+        section_title=section["title"],
+        total=total,
+        counts=counts,
+    )
+
+
 @app.route("/start/<section_id>")
 def start(section_id):
-    """セクション開始：出題順をシャッフルし、得点をリセットする"""
+    """セクション開始：出題順をシャッフルし、選ばれた問題数だけ出題する"""
     section = get_section(section_id)
-    order = list(range(len(section["questions"])))
+    total = len(section["questions"])
+
+    # 出題数（?count=10 など）。未指定・不正な値なら全問。
+    try:
+        count = int(request.args.get("count", total))
+    except ValueError:
+        count = total
+    count = max(1, min(count, total))  # 1〜総数の範囲に収める
+
+    order = list(range(total))
     random.shuffle(order)  # 出題順をシャッフル
+    order = order[:count]  # 先頭 count 問だけを今回の出題にする
     session["quiz"] = {
         "section_id": section_id,
         "order": order,
         "pos": 0,      # 現在の出題位置（0始まり）
-        "score": 0,    # 正解数
+        "score": 0,    # 自己採点で「正解」にした数
     }
     session.pop("last", None)
     return redirect(url_for("quiz", section_id=section_id))
@@ -200,114 +219,107 @@ def start(section_id):
 
 @app.route("/quiz/<section_id>")
 def quiz(section_id):
-    """クイズ画面（問題文＋4つの選択肢）"""
+    """出題画面（問題文＋解答の記入欄）"""
     section = get_section(section_id)
     quiz_state = current_quiz(section_id)
     if quiz_state is None:
         return redirect(url_for("start", section_id=section_id))
 
-    questions = section["questions"]
-    order = quiz_state["order"]
-    pos = quiz_state["pos"]
-
-    # 全問終了していれば結果画面へ
-    if pos >= len(order):
+    if quiz_state["pos"] >= len(quiz_state["order"]):
         return redirect(url_for("result", section_id=section_id))
 
-    qidx = order[pos]
-    # Excel が編集されて問題数が変わった場合などの保険
-    if qidx >= len(questions):
+    q = current_question(section, quiz_state)
+    if q is None:
         return redirect(url_for("start", section_id=section_id))
-
-    q = questions[qidx]
-    # 選択肢を (元の番号, テキスト) にして表示順だけシャッフルする。
-    # 送信値には「元の番号」を使うので、並びを変えても採点は正しい。
-    choices = list(enumerate(q["choices"], start=1))
-    random.shuffle(choices)
 
     return render_template(
         "quiz.html",
         section_id=section_id,
         section_title=section["title"],
         question=q["question"],
-        choices=choices,
-        number=pos + 1,
-        total=len(order),
+        number=quiz_state["pos"] + 1,
+        total=len(quiz_state["order"]),
     )
 
 
 @app.route("/answer/<section_id>", methods=["POST"])
 def answer(section_id):
-    """採点してセッションを進め、フィードバック画面へリダイレクト（PRG）"""
+    """解答を受け取り、答え合わせ画面へリダイレクト（PRG）。ここでは採点しない"""
     section = get_section(section_id)
     quiz_state = current_quiz(section_id)
     if quiz_state is None:
         return redirect(url_for("start", section_id=section_id))
 
-    questions = section["questions"]
-    order = quiz_state["order"]
-    pos = quiz_state["pos"]
-    if pos >= len(order):
+    q = current_question(section, quiz_state)
+    if q is None:
         return redirect(url_for("result", section_id=section_id))
 
-    qidx = order[pos]
-    if qidx >= len(questions):
-        return redirect(url_for("start", section_id=section_id))
-    q = questions[qidx]
+    user_answer = (request.form.get("answer") or "").strip()
 
-    # 送信された選択肢番号（1始まり）を 0始まりの位置に変換
-    try:
-        chosen_index = int(request.form.get("choice", "")) - 1
-    except ValueError:
-        chosen_index = -1
-
-    if not (0 <= chosen_index < len(q["choices"])):
-        # 未選択・不正な値ならクイズ画面に戻す
-        return redirect(url_for("quiz", section_id=section_id))
-
-    is_correct = chosen_index == q["answer_index"]
-    if is_correct:
-        quiz_state["score"] += 1
-
-    # フィードバック表示に必要な情報を保存（リロードしても再採点されないように）
+    # 答え合わせ画面に必要な情報を保存。
+    # pos も一緒に持ち、二重採点（戻る／リロード）を防ぐ。
     session["last"] = {
         "section_id": section_id,
-        "is_correct": is_correct,
-        "user_answer": q["choices"][chosen_index],
-        "correct_answer": q["choices"][q["answer_index"]],
+        "pos": quiz_state["pos"],
+        "user_answer": user_answer,
+        "correct_answer": q["answer"],
         "explanation": q["explanation"],
     }
-    quiz_state["pos"] = pos + 1  # 次の問題へ進める
     session.modified = True
 
-    return redirect(url_for("feedback", section_id=section_id))
+    return redirect(url_for("reveal", section_id=section_id))
 
 
-@app.route("/feedback/<section_id>")
-def feedback(section_id):
-    """直前の解答に対する正誤＋解説を表示（リロード安全）"""
+@app.route("/reveal/<section_id>")
+def reveal(section_id):
+    """答え合わせ画面：模範解答と解説を表示し、自分で〇×を押してもらう"""
     section = get_section(section_id)
-    last = session.get("last")
     quiz_state = current_quiz(section_id)
-    if last is None or last.get("section_id") != section_id or quiz_state is None:
-        return redirect(url_for("start", section_id=section_id))
+    last = session.get("last")
+    if (quiz_state is None or last is None
+            or last.get("section_id") != section_id
+            or last.get("pos") != quiz_state["pos"]):
+        return redirect(url_for("quiz", section_id=section_id))
 
-    has_next = quiz_state["pos"] < len(quiz_state["order"])
-    template = "correct.html" if last["is_correct"] else "incorrect.html"
     return render_template(
-        template,
+        "reveal.html",
         section_id=section_id,
         section_title=section["title"],
         user_answer=last["user_answer"],
         correct_answer=last["correct_answer"],
         explanation=last["explanation"],
-        has_next=has_next,
+        number=quiz_state["pos"] + 1,
+        total=len(quiz_state["order"]),
     )
+
+
+@app.route("/grade/<section_id>", methods=["POST"])
+def grade(section_id):
+    """自己採点（〇 or ×）を受け取り、次の問題へ進む"""
+    get_section(section_id)
+    quiz_state = current_quiz(section_id)
+    last = session.get("last")
+    if (quiz_state is None or last is None
+            or last.get("section_id") != section_id
+            or last.get("pos") != quiz_state["pos"]):
+        # 押し直し・リロードなど。二重に加点せずやり直させる。
+        return redirect(url_for("quiz", section_id=section_id))
+
+    if request.form.get("judge") == "correct":
+        quiz_state["score"] += 1
+
+    quiz_state["pos"] += 1  # 次の問題へ進める
+    session.pop("last", None)
+    session.modified = True
+
+    if quiz_state["pos"] >= len(quiz_state["order"]):
+        return redirect(url_for("result", section_id=section_id))
+    return redirect(url_for("quiz", section_id=section_id))
 
 
 @app.route("/result/<section_id>")
 def result(section_id):
-    """セクション終了：得点を表示する"""
+    """セクション終了：自己採点の結果を表示する"""
     section = get_section(section_id)
     quiz_state = current_quiz(section_id)
     if quiz_state is None:

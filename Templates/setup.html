@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ section_title }}｜出題数を選ぶ{% endblock %}
+{% block content %}
+  <span class="badge">{{ section_title }}</span>
+  <h1>何問に挑戦する？</h1>
+  <p class="note">全 {{ total }} 問からランダムに出題します。</p>
+  <div class="section-list">
+    {% for c in counts %}
+      <a class="btn section-btn" href="{{ url_for('start', section_id=section_id, count=c) }}">
+        {{ c }}問
+        {% if c == total %}<span class="count">全問</span>{% endif %}
+      </a>
+    {% endfor %}
+  </div>
+  <a class="btn secondary" href="{{ url_for('index') }}">単元選択に戻る</a>
+{% endblock %}

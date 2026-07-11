@@ -4,13 +4,9 @@
   <span class="badge">{{ section_title }} ｜ 第 {{ number }} 問 / 全 {{ total }} 問</span>
   <h1>{{ question }}</h1>
   <form action="{{ url_for('answer', section_id=section_id) }}" method="post">
-    <div class="choice-list">
-      {% for num, text in choices %}
-        <button type="submit" name="choice" value="{{ num }}" class="btn choice-btn">
-          <span class="choice-label">{{ loop.index }}</span>{{ text }}
-        </button>
-      {% endfor %}
-    </div>
+    <input type="text" name="answer" placeholder="答えを入力（空欄のままでもOK）"
+           autocomplete="off" autofocus>
+    <button type="submit" class="btn">答えを見る</button>
   </form>
   <a class="btn secondary" href="{{ url_for('index') }}">単元選択に戻る</a>
 {% endblock %}

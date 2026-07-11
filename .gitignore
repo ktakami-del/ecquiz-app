@@ -18,3 +18,7 @@ Thumbs.db
 
 # 環境変数ファイル（もし作る場合。秘密鍵などを含めない）
 .env
+
+# Excel のバックアップ（ローカル作業用。デプロイには不要）
+questions_*backup*.xlsx
+questions_before_*.xlsx
