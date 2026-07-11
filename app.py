@@ -33,6 +33,9 @@ QUESTIONS_FILE = os.path.join(BASE_DIR, "questions.xlsx")
 # 出題数の選択肢。単元の問題数を超えるものは表示せず、末尾に「全問」を足す。
 COUNT_CHOICES = [10, 30, 50, 100]
 
+# 番号順モードで1回に解く問題数（Excel の上から10問ずつ区切る）
+BLOCK_SIZE = 10
+
 
 def load_sections():
     """questions.xlsx を読み込んでセクションのリストを返す"""
@@ -174,9 +177,17 @@ def index():
     return render_template("index.html", sections=sections)
 
 
+def blocks_of(total):
+    """Excel の並び順を BLOCK_SIZE 問ずつ区切った一覧を返す（番号は1始まり）"""
+    return [
+        {"start": s + 1, "end": min(s + BLOCK_SIZE, total)}
+        for s in range(0, total, BLOCK_SIZE)
+    ]
+
+
 @app.route("/setup/<section_id>")
 def setup(section_id):
-    """出題数を選ぶ画面（10問・30問・…・全問）"""
+    """出題方法を選ぶ画面（ランダム出題の問題数 / 番号順の10問ずつ）"""
     section = get_section(section_id)
     total = len(section["questions"])
     # 用意した選択肢のうち、その単元の問題数を超えないものだけ出す。
@@ -188,7 +199,23 @@ def setup(section_id):
         section_title=section["title"],
         total=total,
         counts=counts,
+        blocks=blocks_of(total),
     )
+
+
+@app.route("/block/<section_id>/<int:start_no>")
+def block(section_id, start_no):
+    """番号順モード：Excel の上から数えて start_no 番から BLOCK_SIZE 問を順番どおり出題"""
+    section = get_section(section_id)
+    total = len(section["questions"])
+
+    # start_no は1始まりの問題番号。ブロックの先頭（1, 11, 21…）に丸める。
+    if not (1 <= start_no <= total):
+        return redirect(url_for("setup", section_id=section_id))
+    first = (start_no - 1) // BLOCK_SIZE * BLOCK_SIZE  # 0始まりの位置
+
+    order = list(range(first, min(first + BLOCK_SIZE, total)))  # シャッフルしない
+    return begin_quiz(section_id, order, block_start=first + 1)
 
 
 @app.route("/start/<section_id>")
@@ -228,7 +255,7 @@ def retry(section_id):
     return begin_quiz(section_id, wrong)
 
 
-def begin_quiz(section_id, order):
+def begin_quiz(section_id, order, block_start=None):
     """出題リストを受け取り、セッションを初期化してクイズ画面へ送る"""
     session["quiz"] = {
         "section_id": section_id,
@@ -236,6 +263,8 @@ def begin_quiz(section_id, order):
         "pos": 0,      # 現在の出題位置（0始まり）
         "score": 0,    # 自己採点で「正解」にした数
         "wrong": [],   # 「不正解」にした問題の番号（やり直し用）
+        # 番号順モードのときだけ、そのブロックの先頭番号（1, 11, 21…）が入る
+        "block_start": block_start,
     }
     session.pop("last", None)
     return redirect(url_for("quiz", section_id=section_id))
@@ -263,6 +292,9 @@ def quiz(section_id):
         question=q["question"],
         number=quiz_state["pos"] + 1,
         total=len(quiz_state["order"]),
+        # 番号順モードでは Excel 上の問題番号（1始まり）も出す
+        question_no=(quiz_state["order"][quiz_state["pos"]] + 1
+                     if quiz_state.get("block_start") else None),
     )
 
 
@@ -360,6 +392,14 @@ def result(section_id):
     questions = section["questions"]
     wrong = [questions[i] for i in quiz_state.get("wrong", []) if i < len(questions)]
 
+    # 番号順モードなら「この範囲をもう一度」「次の10問へ」を出せるようにする
+    block_start = quiz_state.get("block_start")
+    block_end = next_block = None
+    if block_start:
+        block_end = min(block_start + BLOCK_SIZE - 1, len(questions))
+        if block_end < len(questions):
+            next_block = block_end + 1
+
     return render_template(
         "result.html",
         section_id=section_id,
@@ -368,6 +408,9 @@ def result(section_id):
         total=total,
         percent=percent,
         wrong=wrong,
+        block_start=block_start,
+        block_end=block_end,
+        next_block=next_block,
     )
 
 

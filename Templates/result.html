@@ -12,7 +12,9 @@
     <h1>もう一歩！</h1>
   {% endif %}
 
-  <p class="badge">{{ section_title }}</p>
+  <p class="badge">
+    {{ section_title }}{% if block_start %} ｜ {{ block_start }}〜{{ block_end }}問目{% endif %}
+  </p>
   <div class="score">
     <span class="score-num">{{ score }}</span> / {{ total }} 問正解
     <div class="score-percent">正答率 {{ percent }}%（自己採点）</div>
@@ -31,15 +33,25 @@
     <a class="btn" href="{{ url_for('retry', section_id=section_id) }}">
       間違えた {{ wrong|length }} 問をやり直す
     </a>
-    <a class="btn secondary" href="{{ url_for('start', section_id=section_id, count=total) }}">
-      同じ {{ total }} 問数でもう一度（シャッフル）
+  {% endif %}
+
+  {% if block_start %}
+    {% if next_block %}
+      <a class="btn {% if wrong %}secondary{% endif %}"
+         href="{{ url_for('block', section_id=section_id, start_no=next_block) }}">
+        次の10問へ（{{ next_block }}問目〜）
+      </a>
+    {% endif %}
+    <a class="btn secondary" href="{{ url_for('block', section_id=section_id, start_no=block_start) }}">
+      {{ block_start }}〜{{ block_end }}問目をもう一度
     </a>
   {% else %}
-    <a class="btn" href="{{ url_for('start', section_id=section_id, count=total) }}">
+    <a class="btn {% if wrong %}secondary{% endif %}"
+       href="{{ url_for('start', section_id=section_id, count=total) }}">
       同じ {{ total }} 問数でもう一度（シャッフル）
     </a>
   {% endif %}
 
-  <a class="btn secondary" href="{{ url_for('setup', section_id=section_id) }}">出題数を変える</a>
+  <a class="btn secondary" href="{{ url_for('setup', section_id=section_id) }}">出題方法を変える</a>
   <a class="btn secondary" href="{{ url_for('index') }}">単元選択に戻る</a>
 {% endblock %}

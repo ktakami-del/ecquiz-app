@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 {% block title %}{{ section_title }}｜第{{ number }}問{% endblock %}
 {% block content %}
-  <span class="badge">{{ section_title }} ｜ 第 {{ number }} 問 / 全 {{ total }} 問</span>
+  <span class="badge">
+    {{ section_title }} ｜
+    {% if question_no %}No.{{ question_no }}（{{ number }} / {{ total }}）
+    {% else %}第 {{ number }} 問 / 全 {{ total }} 問{% endif %}
+  </span>
   <h1>{{ question }}</h1>
   <form action="{{ url_for('answer', section_id=section_id) }}" method="post">
     <input type="text" name="answer" placeholder="答えを入力（空欄のままでもOK）"

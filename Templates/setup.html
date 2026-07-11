@@ -1,9 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{{ section_title }}｜出題数を選ぶ{% endblock %}
+{% block title %}{{ section_title }}｜出題方法を選ぶ{% endblock %}
 {% block content %}
   <span class="badge">{{ section_title }}</span>
-  <h1>何問に挑戦する？</h1>
-  <p class="note">全 {{ total }} 問からランダムに出題します。</p>
+  <h1>どう解く？</h1>
+
+  <div class="mode-title">🔀 ランダム出題</div>
+  <p class="note">全 {{ total }} 問からランダムに選んで出題します。</p>
   <div class="section-list">
     {% for c in counts %}
       <a class="btn section-btn" href="{{ url_for('start', section_id=section_id, count=c) }}">
@@ -12,5 +14,18 @@
       </a>
     {% endfor %}
   </div>
+
+  <div class="mode-title">🔢 番号順（10問ずつ）</div>
+  <p class="note">Excel の並び順どおりに、10問ずつ区切って出題します。</p>
+  <div class="section-list block-list">
+    {% for b in blocks %}
+      <a class="btn section-btn secondary"
+         href="{{ url_for('block', section_id=section_id, start_no=b.start) }}">
+        {{ b.start }}〜{{ b.end }}問目
+        <span class="count">{{ b.end - b.start + 1 }}問</span>
+      </a>
+    {% endfor %}
+  </div>
+
   <a class="btn secondary" href="{{ url_for('index') }}">単元選択に戻る</a>
 {% endblock %}
