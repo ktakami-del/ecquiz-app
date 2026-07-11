@@ -207,11 +207,35 @@ def start(section_id):
     order = list(range(total))
     random.shuffle(order)  # 出題順をシャッフル
     order = order[:count]  # 先頭 count 問だけを今回の出題にする
+    return begin_quiz(section_id, order)
+
+
+@app.route("/retry/<section_id>")
+def retry(section_id):
+    """間違えた問題だけをもう一度出題する（結果画面から）"""
+    section = get_section(section_id)
+    quiz_state = current_quiz(section_id)
+    if quiz_state is None:
+        return redirect(url_for("setup", section_id=section_id))
+
+    # 直前の回で「不正解」にした問題だけを出題対象にする。
+    # Excel が編集されて問題が減った場合に備え、範囲外の番号は捨てる。
+    wrong = [i for i in quiz_state.get("wrong", []) if i < len(section["questions"])]
+    if not wrong:
+        return redirect(url_for("result", section_id=section_id))
+
+    random.shuffle(wrong)
+    return begin_quiz(section_id, wrong)
+
+
+def begin_quiz(section_id, order):
+    """出題リストを受け取り、セッションを初期化してクイズ画面へ送る"""
     session["quiz"] = {
         "section_id": section_id,
         "order": order,
         "pos": 0,      # 現在の出題位置（0始まり）
         "score": 0,    # 自己採点で「正解」にした数
+        "wrong": [],   # 「不正解」にした問題の番号（やり直し用）
     }
     session.pop("last", None)
     return redirect(url_for("quiz", section_id=section_id))
@@ -307,6 +331,9 @@ def grade(section_id):
 
     if request.form.get("judge") == "correct":
         quiz_state["score"] += 1
+    else:
+        # 間違えた問題は控えておき、結果画面から復習・やり直しできるようにする
+        quiz_state.setdefault("wrong", []).append(quiz_state["order"][quiz_state["pos"]])
 
     quiz_state["pos"] += 1  # 次の問題へ進める
     session.pop("last", None)
@@ -328,6 +355,11 @@ def result(section_id):
     score = quiz_state["score"]
     total = len(quiz_state["order"])
     percent = round(score / total * 100) if total else 0
+
+    # 間違えた問題の一覧（復習用）。Excel が編集された場合に備えて範囲外は除く。
+    questions = section["questions"]
+    wrong = [questions[i] for i in quiz_state.get("wrong", []) if i < len(questions)]
+
     return render_template(
         "result.html",
         section_id=section_id,
@@ -335,6 +367,7 @@ def result(section_id):
         score=score,
         total=total,
         percent=percent,
+        wrong=wrong,
     )
 
 

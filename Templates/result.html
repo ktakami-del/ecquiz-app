@@ -18,9 +18,28 @@
     <div class="score-percent">正答率 {{ percent }}%（自己採点）</div>
   </div>
 
-  <a class="btn" href="{{ url_for('start', section_id=section_id, count=total) }}">
-    同じ {{ total }} 問数でもう一度（シャッフル）
-  </a>
+  {% if wrong %}
+    <div class="review">
+      <div class="review-title">間違えた問題（{{ wrong|length }}問）</div>
+      {% for q in wrong %}
+        <div class="review-item">
+          <div class="review-q">{{ q.question }}</div>
+          <div class="review-a">答え： {{ q.answer }}</div>
+        </div>
+      {% endfor %}
+    </div>
+    <a class="btn" href="{{ url_for('retry', section_id=section_id) }}">
+      間違えた {{ wrong|length }} 問をやり直す
+    </a>
+    <a class="btn secondary" href="{{ url_for('start', section_id=section_id, count=total) }}">
+      同じ {{ total }} 問数でもう一度（シャッフル）
+    </a>
+  {% else %}
+    <a class="btn" href="{{ url_for('start', section_id=section_id, count=total) }}">
+      同じ {{ total }} 問数でもう一度（シャッフル）
+    </a>
+  {% endif %}
+
   <a class="btn secondary" href="{{ url_for('setup', section_id=section_id) }}">出題数を変える</a>
   <a class="btn secondary" href="{{ url_for('index') }}">単元選択に戻る</a>
 {% endblock %}
