@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ section_title }}｜間違えた問題リスト{% endblock %}
+{% block content %}
+  <span class="badge">{{ section_title }}</span>
+  <h1>📌 間違えた問題リスト</h1>
+
+  {% if items %}
+    <p class="note">{{ items|length }} 問。解けるようになったら削除してください。</p>
+
+    <a class="btn" href="{{ url_for('review_start', section_id=section_id) }}">
+      このリストから出題（{{ items|length }}問）
+    </a>
+
+    <div class="review">
+      {% for item in items %}
+        <div class="review-item">
+          <div class="review-q">{{ item.question }}</div>
+          <div class="review-a">答え： {{ item.answer }}</div>
+          <form action="{{ url_for('review_remove', section_id=section_id) }}" method="post">
+            <input type="hidden" name="question" value="{{ item.question }}">
+            <button type="submit" class="link-btn">リストから削除</button>
+          </form>
+        </div>
+      {% endfor %}
+    </div>
+
+    <form action="{{ url_for('review_clear', section_id=section_id) }}" method="post"
+          onsubmit="return confirm('この単元のリストを全部削除します。よろしいですか？');">
+      <button type="submit" class="btn secondary">リストを全部削除</button>
+    </form>
+  {% else %}
+    <div class="result-icon">✨</div>
+    <p class="note">リストは空です。<br>答え合わせで ❌ を押した問題が、ここに自動でたまります。</p>
+  {% endif %}
+
+  <a class="btn secondary" href="{{ url_for('setup', section_id=section_id) }}">出題方法を選ぶ</a>
+  <a class="btn secondary" href="{{ url_for('index') }}">単元選択に戻る</a>
+{% endblock %}

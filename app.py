@@ -1,5 +1,7 @@
+import json
 import os
 import random
+import uuid
 
 from openpyxl import load_workbook
 from flask import (
@@ -35,6 +37,69 @@ COUNT_CHOICES = [10, 30, 50, 100]
 
 # 番号順モードで1回に解く問題数（Excel の上から10問ずつ区切る）
 BLOCK_SIZE = 10
+
+# ---- 間違えた問題リスト（苦手リスト） --------------------------------------
+# 単元ごとに「あとで解き直したい問題」を貯めておく。
+#   - ❌（不正解）を押すと自動で入る
+#   - 答え合わせ画面から手動でも追加できる
+#   - リスト画面からいつでも削除できる
+#   - このリストだけを出題するモードがある
+#
+# 保存先はサーバー上の JSON ファイル。ブラウザには利用者を見分けるIDだけ持たせる
+# （セッションcookie は容量が小さく、問題数が増えると入りきらないため）。
+# 問題は「行番号」ではなく「問題文そのもの」で覚える。こうしておけば Excel に行を
+# 挿入・並べ替えしてもリストが壊れない（問題文を書き換えた場合はリストから外れる）。
+REVIEW_FILE = os.path.join(BASE_DIR, "review_lists.json")
+
+
+def _read_review_file():
+    try:
+        with open(REVIEW_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}  # 未作成・壊れている場合は空から始める
+
+
+def _user_id():
+    """このブラウザを見分けるID（無ければ発行する）"""
+    if "uid" not in session:
+        session["uid"] = uuid.uuid4().hex
+        session.permanent = True  # ブラウザを閉じてもリストが残るように
+    return session["uid"]
+
+
+def get_review(section_id):
+    """この単元の間違えた問題リスト（問題文のリスト）を返す"""
+    data = _read_review_file()
+    return data.get(_user_id(), {}).get(section_id, [])
+
+
+def save_review(section_id, questions):
+    """この単元の間違えた問題リストを保存する"""
+    data = _read_review_file()
+    data.setdefault(_user_id(), {})[section_id] = questions
+    tmp = REVIEW_FILE + ".tmp"  # 書き込み中に壊れないよう一時ファイル経由で置き換える
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False)
+    os.replace(tmp, REVIEW_FILE)
+
+
+def add_to_review(section_id, question_text):
+    """リストに追加（すでに入っていれば何もしない）"""
+    items = get_review(section_id)
+    if question_text not in items:
+        items.append(question_text)
+        save_review(section_id, items)
+
+
+def review_questions(section):
+    """リストに入っている問題を、いまの Excel の内容と突き合わせて返す。
+
+    返すのは (問題番号（0始まり）, 問題) の組。Excel から消された問題は自然に落ちる。
+    """
+    saved = get_review(section["id"])
+    by_text = {q["question"]: (i, q) for i, q in enumerate(section["questions"])}
+    return [by_text[t] for t in saved if t in by_text]
 
 
 def load_sections():
@@ -200,6 +265,7 @@ def setup(section_id):
         total=total,
         counts=counts,
         blocks=blocks_of(total),
+        review_count=len(review_questions(section)),
     )
 
 
@@ -253,6 +319,52 @@ def retry(section_id):
 
     random.shuffle(wrong)
     return begin_quiz(section_id, wrong)
+
+
+@app.route("/review/<section_id>")
+def review(section_id):
+    """間違えた問題リストの画面：一覧・削除・このリストから出題"""
+    section = get_section(section_id)
+    items = [
+        {"question": q["question"], "answer": q["answer"]}
+        for _, q in review_questions(section)
+    ]
+    return render_template(
+        "review.html",
+        section_id=section_id,
+        section_title=section["title"],
+        items=items,
+    )
+
+
+@app.route("/review/<section_id>/remove", methods=["POST"])
+def review_remove(section_id):
+    """リストから1問だけ削除する"""
+    get_section(section_id)
+    target = request.form.get("question", "")
+    items = [t for t in get_review(section_id) if t != target]
+    save_review(section_id, items)
+    return redirect(url_for("review", section_id=section_id))
+
+
+@app.route("/review/<section_id>/clear", methods=["POST"])
+def review_clear(section_id):
+    """リストを空にする"""
+    get_section(section_id)
+    save_review(section_id, [])
+    return redirect(url_for("review", section_id=section_id))
+
+
+@app.route("/review/<section_id>/start")
+def review_start(section_id):
+    """間違えた問題リストだけを出題する"""
+    section = get_section(section_id)
+    order = [i for i, _ in review_questions(section)]
+    if not order:
+        return redirect(url_for("review", section_id=section_id))
+
+    random.shuffle(order)
+    return begin_quiz(section_id, order)
 
 
 def begin_quiz(section_id, order, block_start=None):
@@ -317,6 +429,7 @@ def answer(section_id):
     session["last"] = {
         "section_id": section_id,
         "pos": quiz_state["pos"],
+        "question": q["question"],   # 間違えた問題リストへの登録に使う
         "user_answer": user_answer,
         "correct_answer": q["answer"],
         "explanation": q["explanation"],
@@ -346,7 +459,21 @@ def reveal(section_id):
         explanation=last["explanation"],
         number=quiz_state["pos"] + 1,
         total=len(quiz_state["order"]),
+        # すでに「間違えた問題リスト」に入っているか（手動追加ボタンの表示切替に使う）
+        in_review=last["question"] in get_review(section_id),
     )
+
+
+@app.route("/review/<section_id>/add", methods=["POST"])
+def review_add(section_id):
+    """答え合わせ画面から、いま出ている問題を手動でリストに追加する"""
+    get_section(section_id)
+    last = session.get("last")
+    if last is None or last.get("section_id") != section_id:
+        return redirect(url_for("quiz", section_id=section_id))
+
+    add_to_review(section_id, last["question"])
+    return redirect(url_for("reveal", section_id=section_id))
 
 
 @app.route("/grade/<section_id>", methods=["POST"])
@@ -366,6 +493,8 @@ def grade(section_id):
     else:
         # 間違えた問題は控えておき、結果画面から復習・やり直しできるようにする
         quiz_state.setdefault("wrong", []).append(quiz_state["order"][quiz_state["pos"]])
+        # 「間違えた問題リスト」にも自動で追加する
+        add_to_review(section_id, last["question"])
 
     quiz_state["pos"] += 1  # 次の問題へ進める
     session.pop("last", None)

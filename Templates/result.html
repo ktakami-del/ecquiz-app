@@ -30,10 +30,15 @@
         </div>
       {% endfor %}
     </div>
+    <p class="hint">📌 この {{ wrong|length }} 問は「間違えた問題リスト」に追加されました</p>
     <a class="btn" href="{{ url_for('retry', section_id=section_id) }}">
       間違えた {{ wrong|length }} 問をやり直す
     </a>
   {% endif %}
+
+  <a class="btn secondary" href="{{ url_for('review', section_id=section_id) }}">
+    📌 間違えた問題リストを見る
+  </a>
 
   {% if block_start %}
     {% if next_block %}

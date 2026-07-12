@@ -4,6 +4,22 @@
   <span class="badge">{{ section_title }}</span>
   <h1>どう解く？</h1>
 
+  <div class="mode-title">📌 間違えた問題リスト</div>
+  {% if review_count %}
+    <p class="note">この単元のリストに {{ review_count }} 問たまっています。</p>
+    <div class="section-list">
+      <a class="btn section-btn" href="{{ url_for('review_start', section_id=section_id) }}">
+        リストから出題
+        <span class="count">{{ review_count }}問</span>
+      </a>
+      <a class="btn section-btn secondary" href="{{ url_for('review', section_id=section_id) }}">
+        リストを見る・編集する
+      </a>
+    </div>
+  {% else %}
+    <p class="note">まだ空です。❌ を押した問題が自動でたまっていきます。</p>
+  {% endif %}
+
   <div class="mode-title">🔀 ランダム出題</div>
   <p class="note">全 {{ total }} 問からランダムに選んで出題します。</p>
   <div class="section-list">

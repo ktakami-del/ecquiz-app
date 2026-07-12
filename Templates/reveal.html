@@ -24,7 +24,9 @@
     </div>
   {% endif %}
 
-  <p class="note">自分の解答は合っていましたか？</p>
+  <p class="note">自分の解答は合っていましたか？<br>
+    <span class="hint">❌ を押した問題は「間違えた問題リスト」に自動で入ります。</span>
+  </p>
   <form action="{{ url_for('grade', section_id=section_id) }}" method="post">
     <div class="judge-list">
       <button type="submit" name="judge" value="correct" class="btn judge-btn judge-correct">
@@ -35,5 +37,13 @@
       </button>
     </div>
   </form>
+
+  {% if in_review %}
+    <p class="hint">📌 この問題は「間違えた問題リスト」に入っています</p>
+  {% else %}
+    <form action="{{ url_for('review_add', section_id=section_id) }}" method="post">
+      <button type="submit" class="link-btn">📌 この問題をリストに追加する</button>
+    </form>
+  {% endif %}
   <a class="btn secondary" href="{{ url_for('index') }}">単元選択に戻る</a>
 {% endblock %}
