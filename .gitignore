@@ -25,3 +25,6 @@ questions_before_*.xlsx
 
 # 間違えた問題リストの保存ファイル（利用者ごとのデータ。共有しない）
 review_lists.json
+
+# ローカル開発用のDB（本番は PostgreSQL を使う）
+review.db

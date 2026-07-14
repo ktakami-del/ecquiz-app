@@ -1,4 +1,3 @@
-import json
 import os
 import random
 import uuid
@@ -6,6 +5,10 @@ import uuid
 from openpyxl import load_workbook
 from flask import (
     Flask, render_template, request, redirect, url_for, abort, session
+)
+from sqlalchemy import (
+    Column, Integer, MetaData, String, Table, Text, UniqueConstraint,
+    create_engine, select,
 )
 
 # Templates フォルダ（大文字）を明示的に指定（Windows/他OS どちらでも動くように）
@@ -45,19 +48,37 @@ BLOCK_SIZE = 10
 #   - リスト画面からいつでも削除できる
 #   - このリストだけを出題するモードがある
 #
-# 保存先はサーバー上の JSON ファイル。ブラウザには利用者を見分けるIDだけ持たせる
+# 保存先はデータベース。ブラウザには利用者を見分けるIDだけ持たせる
 # （セッションcookie は容量が小さく、問題数が増えると入りきらないため）。
+#
+# 接続先は環境変数 DATABASE_URL で指定する。
+#   本番（Render）   : Neon などの PostgreSQL の接続文字列を環境変数に登録する
+#   ローカル（未設定）: 下の SQLite ファイル（review.db）に保存する
+# どちらでも同じコードが動くので、開発時に PostgreSQL を用意する必要はない。
+#
 # 問題は「行番号」ではなく「問題文そのもの」で覚える。こうしておけば Excel に行を
 # 挿入・並べ替えしてもリストが壊れない（問題文を書き換えた場合はリストから外れる）。
-REVIEW_FILE = os.path.join(BASE_DIR, "review_lists.json")
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL", "sqlite:///" + os.path.join(BASE_DIR, "review.db")
+)
+# Render/Heroku 系が渡す postgres:// は SQLAlchemy では postgresql:// と書く必要がある
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+# pool_pre_ping: しばらく放置して切れた接続を掴んだままにしない（無料DBは切断が早い）
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, future=True)
 
-def _read_review_file():
-    try:
-        with open(REVIEW_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {}  # 未作成・壊れている場合は空から始める
+metadata = MetaData()
+review_items = Table(
+    "review_items", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_id", String(64), nullable=False),
+    Column("section_id", String(64), nullable=False),
+    Column("question", Text, nullable=False),
+    # 同じ問題を二重に登録しない
+    UniqueConstraint("user_id", "section_id", "question", name="uq_review_item"),
+)
+metadata.create_all(engine)  # テーブルが無ければ作る（あれば何もしない）
 
 
 def _user_id():
@@ -69,27 +90,51 @@ def _user_id():
 
 
 def get_review(section_id):
-    """この単元の間違えた問題リスト（問題文のリスト）を返す"""
-    data = _read_review_file()
-    return data.get(_user_id(), {}).get(section_id, [])
-
-
-def save_review(section_id, questions):
-    """この単元の間違えた問題リストを保存する"""
-    data = _read_review_file()
-    data.setdefault(_user_id(), {})[section_id] = questions
-    tmp = REVIEW_FILE + ".tmp"  # 書き込み中に壊れないよう一時ファイル経由で置き換える
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False)
-    os.replace(tmp, REVIEW_FILE)
+    """この単元の間違えた問題リスト（問題文のリスト）を追加順に返す"""
+    stmt = (
+        select(review_items.c.question)
+        .where(review_items.c.user_id == _user_id(),
+               review_items.c.section_id == section_id)
+        .order_by(review_items.c.id)
+    )
+    with engine.connect() as conn:
+        return [row[0] for row in conn.execute(stmt)]
 
 
 def add_to_review(section_id, question_text):
     """リストに追加（すでに入っていれば何もしない）"""
-    items = get_review(section_id)
-    if question_text not in items:
-        items.append(question_text)
-        save_review(section_id, items)
+    uid = _user_id()
+    with engine.begin() as conn:
+        exists = conn.execute(
+            select(review_items.c.id).where(
+                review_items.c.user_id == uid,
+                review_items.c.section_id == section_id,
+                review_items.c.question == question_text,
+            )
+        ).first()
+        if exists is None:
+            conn.execute(review_items.insert().values(
+                user_id=uid, section_id=section_id, question=question_text,
+            ))
+
+
+def remove_from_review(section_id, question_text):
+    """リストから1問削除する"""
+    with engine.begin() as conn:
+        conn.execute(review_items.delete().where(
+            review_items.c.user_id == _user_id(),
+            review_items.c.section_id == section_id,
+            review_items.c.question == question_text,
+        ))
+
+
+def clear_review(section_id):
+    """この単元のリストを空にする"""
+    with engine.begin() as conn:
+        conn.execute(review_items.delete().where(
+            review_items.c.user_id == _user_id(),
+            review_items.c.section_id == section_id,
+        ))
 
 
 def review_questions(section):
@@ -341,9 +386,7 @@ def review(section_id):
 def review_remove(section_id):
     """リストから1問だけ削除する"""
     get_section(section_id)
-    target = request.form.get("question", "")
-    items = [t for t in get_review(section_id) if t != target]
-    save_review(section_id, items)
+    remove_from_review(section_id, request.form.get("question", ""))
     return redirect(url_for("review", section_id=section_id))
 
 
@@ -351,7 +394,7 @@ def review_remove(section_id):
 def review_clear(section_id):
     """リストを空にする"""
     get_section(section_id)
-    save_review(section_id, [])
+    clear_review(section_id)
     return redirect(url_for("review", section_id=section_id))
 
 
